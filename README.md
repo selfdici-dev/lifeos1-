@@ -107,5 +107,5 @@ ET ton accord.
 - [x] Phase 2 : données en direct
 - [x] Phase 3 (moteur ; rapport à lancer sur ton ordinateur) : backtest honnête
 - [x] Phase 4 : journal, risque, bilan
-- [ ] Phase 5 : revue critique
+- [x] Phase 5 : revue critique (voir REVUE_PHASE5.md, corrections en attente)
 - [ ] Phase 6 : exécution automatisée (désactivée par défaut)
