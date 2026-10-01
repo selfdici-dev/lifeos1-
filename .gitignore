@@ -7,3 +7,4 @@ __pycache__/
 positions.json
 calendrier.json
 reglages.json
+.cache/

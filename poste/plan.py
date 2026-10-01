@@ -37,6 +37,8 @@ class Trade(_Strict):
     stop_pct: Pct = Field(gt=0, lt=100)
     objectifs_pct: list[Pct] = Field(min_length=1, max_length=2)
     barriere_distance_pct: Optional[tuple[Pct, Pct]] = None
+    # symbole par fournisseur (finnhub, twelvedata, yfinance, alphavantage) ; vide = pas de données en direct
+    symboles: dict[Literal["finnhub", "twelvedata", "yfinance", "alphavantage"], str] = {}
 
     @model_validator(mode="after")
     def _coherence(self):

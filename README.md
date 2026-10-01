@@ -33,6 +33,29 @@ perte maximale en euros, étapes dans l'appli, « si ça tourne mal » et « si 
 - `calendrier.json` : annonces à impact fort, avec fuseau horaire (voir `calendrier.exemple.json`).
   S'il est absent, l'assistant te pose la question.
 
+## Données en direct (phase 2)
+
+1. Copie `.env.exemple` en `.env` et colle tes clés gratuites (Finnhub, Twelve Data, Alpha Vantage, FRED).
+2. `python -m poste.diagnostic` : un appel par source, te dit ce qui marche vraiment (aucune clé affichée).
+3. `python -m poste auto` : la fiche avec cours, moyenne 50 jours, EUR/USD, taux US 10 ans et
+   variation du S&P 500 récupérés automatiquement. Tu ne tapes que le prix vendeur de Trade Republic.
+
+| Donnée | Sources, dans l'ordre |
+|---|---|
+| Cours action US | Finnhub, Twelve Data, yfinance |
+| Moyenne 50 jours | Twelve Data, yfinance (clôtures **avant** aujourd'hui uniquement) |
+| Bitcoin, Nasdaq-100, Europe | Twelve Data (Bitcoin), yfinance (différé) |
+| EUR/USD | Twelve Data, yfinance |
+| Taux US 10 ans | FRED (série DGS10 : valeur de la veille) |
+| Variation S&P 500 | Finnhub (SPY), Twelve Data (SPY), yfinance (^GSPC) |
+| Dates de résultats | Alpha Vantage (25 requêtes/jour, compteur dans `.cache/`, cache 24 h) |
+
+Badge de fraîcheur : VERT / ORANGE / PÉRIMÉ (rouge), avec la source et l'heure de Paris.
+Cours : vert ≤ 5 min, orange ≤ 30 min. Données quotidiennes : vert ≤ 4 jours, orange ≤ 6 jours.
+Si une donnée obligatoire est périmée, **aucune fiche n'est générée**. Hors séance US, c'est normal.
+Un fournisseur qui renvoie 3 erreurs 429/403 de suite est coupé 30 minutes (disjoncteur).
+Les prix sont indicatifs : le prix d'exécution se lit dans Trade Republic.
+
 ## Règles bloquantes codées en dur (`poste/regles.py`)
 
 - Pas d'achat dans les 24 h avant une annonce à impact fort.
@@ -51,7 +74,7 @@ perte maximale en euros, étapes dans l'appli, « si ça tourne mal » et « si 
 
 - [x] Phase 0 : fiche d'ordre
 - [x] Phase 1 : plan en données, règles bloquantes, exposition par thème
-- [ ] Phase 2 : données en direct
+- [x] Phase 2 : données en direct
 - [ ] Phase 3 : backtest honnête
 - [ ] Phase 4 : journal, risque, bilan
 - [ ] Phase 5 : revue critique

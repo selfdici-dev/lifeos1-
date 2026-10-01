@@ -125,7 +125,8 @@ def _entier_inf(x: Decimal) -> int:
 
 
 def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Optional[Plan] = None,
-                      positions: Optional[list[Position]] = None) -> Fiche:
+                      positions: Optional[list[Position]] = None,
+                      perimees: Optional[list[str]] = None) -> Fiche:
     plan = plan or _plan_par_defaut()
     positions = positions or []
     trade = plan.trade(trade_id)
@@ -145,6 +146,8 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
 
     # ---- règles bloquantes -> INTERDIT, aucune fiche émise ----
     interdits = []
+    if perimees:
+        interdits.append("Données PÉRIMÉES (" + ", ".join(perimees) + ") : aucune fiche sans données à jour.")
     if s.evenement_majeur_24h:
         interdits.append("Annonce majeure dans les 24 h : pas d'achat.")
     interdits += raisons_feu_vert(s.taux_us10a_pct, s.sp500_variation_seance_pct)

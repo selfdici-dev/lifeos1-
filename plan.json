@@ -40,7 +40,8 @@
       "filtre_mm50": true,
       "fourchette_entree_ref": null,
       "stop_pct": "10",
-      "objectifs_pct": ["12", "25"]
+      "objectifs_pct": ["12", "25"],
+      "symboles": {"finnhub": "NVDA", "twelvedata": "NVDA", "yfinance": "NVDA", "alphavantage": "NVDA"}
     },
     {
       "id": "SEMI-ETF-1",
@@ -54,7 +55,8 @@
       "filtre_mm50": true,
       "fourchette_entree_ref": null,
       "stop_pct": "10",
-      "objectifs_pct": ["12", "25"]
+      "objectifs_pct": ["12", "25"],
+      "symboles": {}
     },
     {
       "id": "BTC-ETP-1",
@@ -68,7 +70,8 @@
       "filtre_mm50": true,
       "fourchette_entree_ref": null,
       "stop_pct": "15",
-      "objectifs_pct": ["20", "40"]
+      "objectifs_pct": ["20", "40"],
+      "symboles": {"twelvedata": "BTC/USD", "yfinance": "BTC-USD"}
     },
     {
       "id": "NDX-TURBO-1",
@@ -83,7 +86,8 @@
       "fourchette_entree_ref": null,
       "stop_pct": "20",
       "objectifs_pct": ["30", "60"],
-      "barriere_distance_pct": ["25", "33"]
+      "barriere_distance_pct": ["25", "33"],
+      "symboles": {"yfinance": "^NDX"}
     }
   ]
 }

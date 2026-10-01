@@ -3,6 +3,7 @@
   python -m poste             fiche d'ordre (niveau lu dans reglages.json)
   python -m poste niveau 2    change le niveau d'agressivité
   python -m poste expo        affiche l'exposition par thème
+  python -m poste auto        fiche avec données en direct (diagnostic : python -m poste.diagnostic)
 """
 import sys
 from datetime import datetime
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from poste.donnees.fabrique import charger_env, creer_marche
+from poste.donnees.modeles import ROUGE_ANSI, FIN_ANSI, badge
 from poste.exposition import calculer_exposition, charger_positions
 from poste.fiche import RAPPEL, Saisie, build_order_sheet
 from poste.plan import charger_plan
@@ -83,15 +86,7 @@ def cmd_fiche() -> None:
     print(RAPPEL)
     print(f"Niveau {niveau} ({n.nom}). Pour changer : python -m poste niveau 1, 2 ou 3")
     print(calculer_exposition(positions, plan.capital_eur).texte())
-    print("\nTrades du plan :")
-    for i, t in enumerate(plan.trades, 1):
-        print(f"  {i}. {t.id} : {t.nom}")
-    while True:
-        try:
-            trade = plan.trades[int(input("Numéro du trade : ")) - 1]
-            break
-        except (ValueError, IndexError):
-            pass
+    trade = _choisir_trade(plan)
 
     print(f"\nRéférence : {trade.ref_libelle}")
     valeurs = dict(
@@ -115,9 +110,81 @@ def cmd_fiche() -> None:
     print(fiche.texte())
 
 
+def _choisir_trade(plan):
+    print("\nTrades du plan :")
+    for i, t in enumerate(plan.trades, 1):
+        print(f"  {i}. {t.id} : {t.nom}")
+    while True:
+        try:
+            return plan.trades[int(input("Numéro du trade : ")) - 1]
+        except (ValueError, IndexError):
+            pass
+
+
+def cmd_auto() -> None:
+    charger_env()
+    plan = charger_plan()
+    niveau = charger_reglages().niveau
+    positions = charger_positions(CHEMIN_POSITIONS)
+    print(RAPPEL)
+    print(f"Niveau {niveau}.")
+    print(calculer_exposition(positions, plan.capital_eur).texte())
+    trade = _choisir_trade(plan)
+
+    marche = creer_marche()
+    releve = marche.releve(trade)
+    maintenant = marche.horloge()
+    print("\nDonnées (indicatives : le prix d'exécution se lit dans Trade Republic) :")
+    for nom, d in releve.donnees.items():
+        print("  " + badge(nom, d, maintenant))
+    perimees = releve.perimees(maintenant)
+    if perimees:
+        print(f"\n{ROUGE_ANSI}PÉRIMÉ{FIN_ANSI} : {', '.join(perimees)}. Aucune fiche d'ordre générée.")
+        print("Hors séance US, c'est normal. Sinon : python -m poste.diagnostic")
+        return
+
+    # Événements : calendrier saisi à la main + dates de résultats (Alpha Vantage).
+    calendrier = charger_calendrier(CHEMIN_CALENDRIER)
+    connus = (calendrier or []) + (releve.evenements or [])
+    bloquants = evenements_bloquants(maintenant, connus)
+    for e in bloquants:
+        print(f"  Événement d'impact fort : {e.nom} le {e.debut.astimezone(FUSEAU):%d/%m à %H:%M} (Paris)")
+    if bloquants:
+        evenement = True
+    else:
+        if calendrier is None or releve.evenements is None:
+            print("  Calendrier incomplet (calendrier.json absent ou Alpha Vantage indisponible).")
+        evenement = _oui_non("Annonce à impact fort dans les 24 h que l'appli ne connaît pas"
+                             " (Fed, inflation US, emploi US) ?")
+
+    d = releve.donnees
+    valeurs = dict(
+        prix_vendeur_eur=_nombre("Prix VENDEUR affiché dans Trade Republic (en €)"),
+        cours_ref=d["cours"].valeur,
+        mm50_ref=d["mm50"].valeur,
+        eurusd=d["eurusd"].valeur if "eurusd" in d else None,
+        taux_us10a_pct=d["taux_us10a"].valeur,
+        sp500_variation_seance_pct=d["sp500_variation"].valeur,
+        evenement_majeur_24h=evenement,
+        perte_cumulee_eur=_nombre("Perte cumulée depuis le début, en € (0 si aucune)"),
+    )
+    if trade.type == "turbo_long":
+        valeurs["barriere_ref"] = _nombre("Barrière (knock-out) du turbo, en points")
+    try:
+        fiche = build_order_sheet(trade.id, Saisie(**valeurs), niveau, plan=plan, positions=positions,
+                                  perimees=releve.perimees(marche.horloge()))
+    except (ValidationError, ValueError) as e:
+        print(f"\nSaisie refusée, aucune fiche émise : {e}")
+        return
+    print()
+    print(fiche.texte())
+
+
 def main(argv: list[str]) -> None:
     if argv[:1] == ["niveau"] and len(argv) == 2:
         cmd_niveau(argv[1])
+    elif argv[:1] == ["auto"]:
+        cmd_auto()
     elif argv[:1] == ["expo"]:
         cmd_expo()
     elif not argv:
