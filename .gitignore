@@ -9,3 +9,5 @@ calendrier.json
 reglages.json
 .cache/
 historique/
+journal.json
+journal.tmp

@@ -5,11 +5,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from poste.rappels import RAPPELS_DEFAUT, Rappel
+
 CHEMIN_REGLAGES = Path(__file__).resolve().parent.parent / "reglages.json"
 
 
 class Reglages(BaseModel):
     niveau: Literal[1, 2, 3] = 1
+    rappels: list[Rappel] = RAPPELS_DEFAUT
 
 
 def charger_reglages(chemin: Path = CHEMIN_REGLAGES) -> Reglages:

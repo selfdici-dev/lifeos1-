@@ -71,6 +71,21 @@ Walk-forward (3 ans d'apprentissage, 1 an de test jamais vu), régimes 2018, 202
 Moins de 30 trades : « échantillon insuffisant ». Aucun seuil ne change sans amélioration hors échantillon
 ET ton accord.
 
+## Journal, risque, bilan (phase 4)
+
+- `python -m poste journal achat | stop | vente` : tu notes ce qui s'est réellement passé dans Trade Republic
+  (prix d'exécution réel, stop posé, raison). `python -m poste journal` liste les positions.
+- Chaque fiche émise est numérotée (F1, F2…) et gardée : le bilan sait ce que tu as suivi ou ignoré.
+- La perte cumulée et l'exposition sont calculées depuis le journal (plus besoin de les taper).
+- `python -m poste risque` : montant investi, perte si tous les stops sautent, distance au seuil d'arrêt,
+  exposition par thème.
+- `python -m poste bilan` : fiches suivies / ignorées, erreurs (stop descendu, achat au-dessus du prix limite,
+  achat un jour interdit, achat sans fiche FEU VERT). Aucun ajustement des seuils avant 30 trades mesurés,
+  et jamais automatiquement.
+- `python -m poste rappels` (optionnel) : rappels push gratuits via ntfy.sh. Mets `NTFY_TOPIC=` un nom long et
+  imprévisible dans `.env`, abonne-toi à ce nom dans l'appli ntfy. Horaires provisoires (annexe B absente) :
+  15:15 et 21:45 en semaine, bilan le vendredi à 22:05 ; modifiables dans `reglages.json`.
+
 ## Règles bloquantes codées en dur (`poste/regles.py`)
 
 - Pas d'achat dans les 24 h avant une annonce à impact fort.
@@ -91,6 +106,6 @@ ET ton accord.
 - [x] Phase 1 : plan en données, règles bloquantes, exposition par thème
 - [x] Phase 2 : données en direct
 - [x] Phase 3 (moteur ; rapport à lancer sur ton ordinateur) : backtest honnête
-- [ ] Phase 4 : journal, risque, bilan
+- [x] Phase 4 : journal, risque, bilan
 - [ ] Phase 5 : revue critique
 - [ ] Phase 6 : exécution automatisée (désactivée par défaut)
