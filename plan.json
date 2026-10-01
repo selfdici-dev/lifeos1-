@@ -7,10 +7,6 @@
   "marge_limite_pct": "0.2",
   "ratio_min_gain_risque": "1.5",
   "tolerance_ecart_prix_pct": "3",
-  "feu_vert": {
-    "taux_us10a_max_pct": "5.40",
-    "sp500_baisse_max_pct": "1.5"
-  },
   "niveaux": {
     "1": {
       "nom": "agressif mesuré",

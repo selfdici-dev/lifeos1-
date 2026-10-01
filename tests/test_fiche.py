@@ -248,3 +248,23 @@ def test_aucune_fiche_jour_interdit(ts, niveau):
     f = build_order_sheet(trade_id, s, niveau, plan=PLAN)
     assert f.verdict is Verdict.INTERDIT
     assert f.quantite is None and f.etapes == []
+
+
+# ---------- phase 1 : exposition dans la fiche ----------
+
+from poste.exposition import Position
+
+
+def test_fiche_affiche_exposition_et_alerte():
+    pos = [Position(instrument="ETP BTC", theme="crypto", valeur_eur=D("1300"))]
+    f = build_order_sheet("NVDA-1", saisie_ok(), 1, plan=PLAN, positions=pos)
+    assert f.verdict is Verdict.FEU_VERT  # un avertissement, pas un blocage
+    assert f.exposition is not None
+    assert f.exposition.par_theme["semi-conducteurs"] == f.montant_engage_eur
+    assert f.exposition.avertissement is not None
+    assert "60 %" in f.texte()
+
+
+def test_fiche_sans_positions_affiche_quand_meme_exposition():
+    f = build_order_sheet("NVDA-1", saisie_ok(), 1, plan=PLAN)
+    assert "Exposition" in f.texte()

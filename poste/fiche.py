@@ -12,7 +12,9 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from poste.exposition import Exposition, Position, calculer_exposition
 from poste.plan import Plan, Trade, charger_plan
+from poste.regles import raisons_feu_vert
 
 CENT = Decimal("0.01")
 CENT_ = Decimal("100")
@@ -58,6 +60,7 @@ class Fiche:
     gain_vise_eur: Optional[Decimal] = None
     ratio_gain_risque: Optional[Decimal] = None
     montant_engage_eur: Optional[Decimal] = None
+    exposition: Optional[Exposition] = None
     conversion: dict = field(default_factory=dict)
     etapes: list[str] = field(default_factory=list)
     si_ca_tourne_mal: list[str] = field(default_factory=list)
@@ -99,6 +102,10 @@ class Fiche:
         if self.si_ca_marche:
             l.append("SI ÇA MARCHE :")
             l += [f"  - {e}" for e in self.si_ca_marche]
+        if self.exposition is not None:
+            if self.quantite is not None:
+                l.append("(exposition calculée en comptant ce trade)")
+            l.append(self.exposition.texte())
         l.append("Seuils du plan : points de départ non testés.")
         l.append(RAPPEL)
         return "\n".join(l)
@@ -117,8 +124,10 @@ def _entier_inf(x: Decimal) -> int:
     return int(x.to_integral_value(rounding=ROUND_FLOOR))
 
 
-def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Optional[Plan] = None) -> Fiche:
+def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Optional[Plan] = None,
+                      positions: Optional[list[Position]] = None) -> Fiche:
     plan = plan or _plan_par_defaut()
+    positions = positions or []
     trade = plan.trade(trade_id)
     niv = plan.niveau(niveau)
     s = prix_saisis
@@ -132,17 +141,13 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
 
     fiche = Fiche(trade_id=trade.id, nom=trade.nom, niveau=int(niveau), verdict=Verdict.FEU_VERT)
     fiche.conversion = _conversion(trade, s)
+    fiche.exposition = calculer_exposition(positions, plan.capital_eur)
 
     # ---- règles bloquantes -> INTERDIT, aucune fiche émise ----
     interdits = []
     if s.evenement_majeur_24h:
         interdits.append("Annonce majeure dans les 24 h : pas d'achat.")
-    fv = plan.feu_vert
-    if s.taux_us10a_pct > fv.taux_us10a_max_pct:
-        interdits.append(f"Test de feu vert rouge : taux US 10 ans {s.taux_us10a_pct} % > {fv.taux_us10a_max_pct} %.")
-    if s.sp500_variation_seance_pct < -fv.sp500_baisse_max_pct:
-        interdits.append(f"Test de feu vert rouge : S&P 500 à {s.sp500_variation_seance_pct} % sur la séance"
-                         f" (baisse de plus de {fv.sp500_baisse_max_pct} %).")
+    interdits += raisons_feu_vert(s.taux_us10a_pct, s.sp500_variation_seance_pct)
     if s.perte_cumulee_eur >= niv.seuil_arret_perte_cumulee_eur:
         interdits.append(f"Perte cumulée {s.perte_cumulee_eur} € ≥ seuil d'arrêt du niveau"
                          f" ({niv.seuil_arret_perte_cumulee_eur} €) : achats arrêtés.")
@@ -191,6 +196,7 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
     fiche.gain_vise_eur = gain
     fiche.ratio_gain_risque = _cent(gain / perte_au_stop)
     fiche.montant_engage_eur = q * limite + frais
+    fiche.exposition = calculer_exposition(positions, plan.capital_eur, ajout=(trade.theme, fiche.montant_engage_eur))
 
     # ---- conditions d'attente -> ATTENDRE ----
     attendre = []

@@ -4,26 +4,26 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CHEMIN_PLAN = Path(__file__).resolve().parent.parent / "plan.json"
 
 Pct = Decimal
 
 
-class FeuVert(BaseModel):
-    taux_us10a_max_pct: Decimal
-    sp500_baisse_max_pct: Decimal = Field(gt=0)
+class _Strict(BaseModel):
+    # une clé inconnue est refusée : aucune règle bloquante ne peut être assouplie depuis plan.json
+    model_config = ConfigDict(extra="forbid")
 
 
-class Niveau(BaseModel):
+class Niveau(_Strict):
     nom: str
     risque_max_par_trade_eur: Decimal = Field(gt=0)
     montant_max_par_trade_eur: Decimal = Field(gt=0)
     seuil_arret_perte_cumulee_eur: Decimal = Field(gt=0)
 
 
-class Trade(BaseModel):
+class Trade(_Strict):
     id: str
     nom: str
     type: Literal["action", "etf", "etp", "turbo_long"]
@@ -49,16 +49,34 @@ class Trade(BaseModel):
         return self
 
 
-class Plan(BaseModel):
+class Plan(_Strict):
     version: str
+    avertissement: str = ""
+    frais_note: str = ""
     capital_eur: Decimal = Field(gt=0)
     frais_par_ordre_eur: Decimal = Field(ge=0)
     marge_limite_pct: Decimal = Field(ge=0, lt=5)
     ratio_min_gain_risque: Decimal = Field(gt=0)
     tolerance_ecart_prix_pct: Decimal = Field(gt=0)
-    feu_vert: FeuVert
     niveaux: dict[str, Niveau]
     trades: list[Trade]
+
+    @model_validator(mode="after")
+    def _coherence(self):
+        if set(self.niveaux) != {"1", "2", "3"}:
+            raise ValueError("le plan doit définir exactement les niveaux 1, 2 et 3")
+        champs = ("risque_max_par_trade_eur", "montant_max_par_trade_eur", "seuil_arret_perte_cumulee_eur")
+        for champ in champs:
+            valeurs = [getattr(self.niveaux[k], champ) for k in ("1", "2", "3")]
+            if valeurs != sorted(valeurs):
+                raise ValueError(f"{champ} doit croître du niveau 1 au niveau 3")
+        for n in self.niveaux.values():
+            if n.montant_max_par_trade_eur > self.capital_eur:
+                raise ValueError("montant maximal par trade supérieur au capital")
+        ids = [t.id for t in self.trades]
+        if len(ids) != len(set(ids)):
+            raise ValueError("identifiants de trades en double")
+        return self
 
     def trade(self, trade_id: str) -> Trade:
         for t in self.trades:

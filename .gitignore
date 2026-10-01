@@ -4,3 +4,6 @@ __pycache__/
 .hypothesis/
 .env
 *.pyc
+positions.json
+calendrier.json
+reglages.json
