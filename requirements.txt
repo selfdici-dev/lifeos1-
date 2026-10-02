@@ -1,0 +1,7 @@
+pydantic>=2.6
+pytest>=8
+hypothesis>=6.100
+requests>=2.31
+python-dotenv>=1.0
+yfinance>=0.2
+ib_async>=2.0

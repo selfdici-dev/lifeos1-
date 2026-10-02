@@ -1,0 +1,93 @@
+{
+  "version": "brouillon-0",
+  "avertissement": "Tous les seuils de ce fichier (stops, objectifs, filtres, budgets) sont des points de départ NON TESTÉS. Ils ne changent que si le backtest de la phase 3 montre mieux HORS échantillon.",
+  "capital_eur": "2500",
+  "frais_par_ordre_eur": "1",
+  "frais_note": "1 € par ordre : à vérifier dans ton appli.",
+  "marge_limite_pct": "0.2",
+  "ratio_min_gain_risque": "1.5",
+  "tolerance_ecart_prix_pct": "3",
+  "niveaux": {
+    "1": {
+      "nom": "agressif mesuré",
+      "risque_max_par_trade_eur": "50",
+      "montant_max_par_trade_eur": "625",
+      "seuil_arret_perte_cumulee_eur": "250"
+    },
+    "2": {
+      "nom": "agressif",
+      "risque_max_par_trade_eur": "75",
+      "montant_max_par_trade_eur": "875",
+      "seuil_arret_perte_cumulee_eur": "375"
+    },
+    "3": {
+      "nom": "très agressif",
+      "risque_max_par_trade_eur": "100",
+      "montant_max_par_trade_eur": "1000",
+      "seuil_arret_perte_cumulee_eur": "500"
+    }
+  },
+  "trades": [
+    {
+      "id": "NVDA-1",
+      "nom": "Nvidia (action)",
+      "type": "action",
+      "theme": "semi-conducteurs",
+      "isin": "US67066G1040",
+      "devise_ref": "USD",
+      "ref_libelle": "NVDA sur TradingView (en dollars)",
+      "meme_cours_que_ref": true,
+      "filtre_mm50": true,
+      "fourchette_entree_ref": null,
+      "stop_pct": "10",
+      "objectifs_pct": ["12", "25"],
+      "symboles": {"finnhub": "NVDA", "twelvedata": "NVDA", "yfinance": "NVDA", "alphavantage": "NVDA"}
+    },
+    {
+      "id": "SEMI-ETF-1",
+      "nom": "ETF semi-conducteurs UCITS (à choisir dans ton appli)",
+      "type": "etf",
+      "theme": "semi-conducteurs",
+      "isin": null,
+      "devise_ref": "EUR",
+      "ref_libelle": "le même ETF sur TradingView (en euros)",
+      "meme_cours_que_ref": true,
+      "filtre_mm50": true,
+      "fourchette_entree_ref": null,
+      "stop_pct": "10",
+      "objectifs_pct": ["12", "25"],
+      "symboles": {}
+    },
+    {
+      "id": "BTC-ETP-1",
+      "nom": "ETP Bitcoin coté en bourse (à choisir dans ton appli)",
+      "type": "etp",
+      "theme": "crypto",
+      "isin": null,
+      "devise_ref": "USD",
+      "ref_libelle": "BTCUSD sur TradingView (en dollars)",
+      "meme_cours_que_ref": false,
+      "filtre_mm50": true,
+      "fourchette_entree_ref": null,
+      "stop_pct": "15",
+      "objectifs_pct": ["20", "40"],
+      "symboles": {"twelvedata": "BTC/USD", "yfinance": "BTC-USD"}
+    },
+    {
+      "id": "NDX-TURBO-1",
+      "nom": "Turbo long Nasdaq-100 (à choisir dans ton appli)",
+      "type": "turbo_long",
+      "theme": "nasdaq_turbo",
+      "isin": null,
+      "devise_ref": "points",
+      "ref_libelle": "NDX (Nasdaq-100) sur TradingView (en points)",
+      "meme_cours_que_ref": false,
+      "filtre_mm50": true,
+      "fourchette_entree_ref": null,
+      "stop_pct": "20",
+      "objectifs_pct": ["30", "60"],
+      "barriere_distance_pct": ["25", "33"],
+      "symboles": {"yfinance": "^NDX"}
+    }
+  ]
+}

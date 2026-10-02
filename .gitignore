@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.hypothesis/
+.env
+*.pyc
+positions.json
+calendrier.json
+reglages.json
+.cache/
+historique/
+journal.json
+journal.tmp
+AUTORISATION_ORDRES_REELS.txt
