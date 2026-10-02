@@ -1,6 +1,21 @@
 # Revue critique avant usage réel (phase 5)
 
-Aucune correction n'a été faite : chaque point attend ton accord.
+## État des corrections (2 octobre 2026)
+
+| Point | Décision | État |
+|---|---|---|
+| C2 liquidités | corriger | **corrigé** : quantité plafonnée par capital + résultat encaissé − investi ; INTERDIT si 0 |
+| H1 perte maximale | corriger | **corrigé** : « Perte au stop » (≤ budget) + « PERTE MAXIMALE » = toute la mise + exemple de gap à −30 % |
+| H2 seuil d'arrêt | depuis le point haut | **corrigé** : baisse du résultat encaissé depuis son point haut |
+| M1 clé dans les logs | corriger | **corrigé** : clé en en-tête HTTP pour Finnhub et Twelve Data ; masquage des clés dans tous les logs urllib3 (test en DEBUG réel) |
+| M2 rappel d'ouverture | corriger | **corrigé** : rappel calé sur 9:30 New York, converti en heure de Paris chaque jour |
+| M5 achat ≠ fiche | corriger | **corrigé** : quantité, stop, instrument et prix comparés à la fiche, alerte immédiate et bilan |
+| C1, H3, H4, M3, M4, M6, F1-F6 | — | ouverts |
+
+Points encore ouverts : la perte possible des positions ouvertes (stops) ne bloque toujours pas un nouvel
+achat (seconde moitié de H2) ; C1 reste à confirmer sur une vraie réponse de Twelve Data.
+
+Liste d'origine ci-dessous, inchangée.
 « Prouvé » = reproduit par une expérience le 2 octobre 2026. « À confirmer » = déduit du code ou de la
 documentation, pas encore observé sur une vraie réponse.
 

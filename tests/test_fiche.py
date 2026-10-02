@@ -39,7 +39,7 @@ def test_feu_vert_calculs_nvda_niveau_1():
     # risque par titre 16,41 ; (50 - 2 frais) / 16,41 = 2,9 -> 2 ; montant (625-1)/164,03 = 3,8 -> 3
     assert f.quantite == 2
     assert isinstance(f.quantite, int)
-    assert f.perte_max_eur == D("34.82")  # 2 × 16,41 + 2 € de frais
+    assert f.perte_au_stop_eur == D("34.82")  # 2 × 16,41 + 2 € de frais
     assert f.objectifs_eur == [D("183.71"), D("205.04")]
     assert f.ratio_gain_risque is not None and f.ratio_gain_risque > 0
     assert len(f.etapes) >= 4
@@ -230,8 +230,11 @@ def test_proprietes_fiche(ts, niveau):
         assert isinstance(f.quantite, int) and f.quantite >= 1
         # stop toujours sous le prix d'achat
         assert D("0") < f.prix_stop_eur < f.prix_limite_eur
-        # perte max jamais au-dessus du budget du trade
-        assert f.perte_max_eur <= n.risque_max_par_trade_eur
+        # perte au stop jamais au-dessus du budget du trade ; perte maximale = mise entière
+        assert f.perte_au_stop_eur <= n.risque_max_par_trade_eur
+        assert f.perte_max_eur == f.quantite * f.prix_limite_eur + 2 * frais
+        if PLAN.trade(trade_id).type == "turbo_long":
+            assert f.perte_max_eur <= n.risque_max_par_trade_eur
         # quantité × prix (+ frais d'achat) jamais au-dessus du montant prévu
         assert f.quantite * f.prix_limite_eur + frais <= n.montant_max_par_trade_eur
         # prix limite >= prix vendeur

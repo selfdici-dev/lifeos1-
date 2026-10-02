@@ -9,22 +9,49 @@ import logging
 from datetime import date, datetime, time, timedelta
 from typing import Callable, Optional
 
-from pydantic import BaseModel, Field
+from zoneinfo import ZoneInfo
+
+from pydantic import BaseModel, Field, model_validator
 
 from poste.regles import FUSEAU
 
 log = logging.getLogger("poste.rappels")
 
 
+NEW_YORK = ZoneInfo("America/New_York")
+
+
+def ouverture_us_paris(jour: date) -> datetime:
+    """Ouverture de Wall Street (9:30 à New York) en heure de Paris : 15:30 en général, mais 14:30
+    pendant les semaines où un seul des deux pays a changé d'heure (mars et fin octobre)."""
+    return datetime.combine(jour, time(9, 30), NEW_YORK).astimezone(FUSEAU)
+
+
 class Rappel(BaseModel):
     jours: tuple[int, ...] = Field(description="0 = lundi … 6 = dimanche")
-    heure: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    heure: Optional[str] = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    avant_ouverture_us_min: Optional[int] = Field(default=None, ge=0, le=600)
     message: str
+
+    @model_validator(mode="after")
+    def _une_heure(self):
+        if (self.heure is None) == (self.avant_ouverture_us_min is None):
+            raise ValueError("un rappel a soit une heure fixe, soit un délai avant l'ouverture US")
+        return self
+
+    def quand(self, jour: date) -> datetime:
+        if self.heure is not None:
+            h, m = map(int, self.heure.split(":"))
+            return datetime.combine(jour, time(h, m), FUSEAU)
+        return ouverture_us_paris(jour) - timedelta(minutes=self.avant_ouverture_us_min)
+
+    def texte(self, jour: date) -> str:
+        return self.message.replace("{ouverture_us}", ouverture_us_paris(jour).strftime("%H:%M"))
 
 
 RAPPELS_DEFAUT = [
-    Rappel(jours=(0, 1, 2, 3, 4), heure="15:15",
-           message="La séance US ouvre à 15:30 (Paris) : test de feu vert avant tout achat."),
+    Rappel(jours=(0, 1, 2, 3, 4), avant_ouverture_us_min=15,
+           message="La séance US ouvre à {ouverture_us} (Paris) : test de feu vert avant tout achat."),
     Rappel(jours=(0, 1, 2, 3, 4), heure="21:45",
            message="Vérifie que chaque position a son stop posé chez le courtier."),
     Rappel(jours=(4,), heure="22:05", message="Bilan hebdomadaire : python -m poste bilan"),
@@ -39,8 +66,7 @@ def prochains_rappels(maintenant: datetime, rappels: list[Rappel], nombre: int =
         jour: date = maintenant.date() + timedelta(days=k)
         for r in rappels:
             if jour.weekday() in r.jours:
-                h, m = map(int, r.heure.split(":"))
-                quand = datetime.combine(jour, time(h, m), FUSEAU)
+                quand = r.quand(jour)
                 if quand > maintenant:
                     out.append((quand, r))
     out.sort(key=lambda x: x[0])

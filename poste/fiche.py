@@ -51,6 +51,7 @@ class Fiche:
     niveau: int
     verdict: Verdict
     raisons: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     quantite: Optional[int] = None
     prix_limite_eur: Optional[Decimal] = None
     prix_stop_eur: Optional[Decimal] = None
@@ -60,6 +61,7 @@ class Fiche:
     gain_vise_eur: Optional[Decimal] = None
     ratio_gain_risque: Optional[Decimal] = None
     montant_engage_eur: Optional[Decimal] = None
+    perte_gap_30_eur: Optional[Decimal] = None
     exposition: Optional[Exposition] = None
     conversion: dict = field(default_factory=dict)
     etapes: list[str] = field(default_factory=list)
@@ -70,6 +72,7 @@ class Fiche:
         l = [f"=== FICHE D'ORDRE {self.trade_id} : {self.nom} (niveau {self.niveau}) ===",
              f"VERDICT : {self.verdict.value}"]
         l += [f"  - {r}" for r in self.raisons]
+        l += [f"  (note) {n}" for n in self.notes]
         if self.verdict is Verdict.INTERDIT:
             l.append("Aucun ordre aujourd'hui pour ce trade.")
         if self.conversion:
@@ -85,10 +88,12 @@ class Fiche:
                 f"Prix du stop : {self.prix_stop_eur} €",
                 "Objectifs : " + " / ".join(f"{o} €" for o in self.objectifs_eur),
                 f"Montant engagé : {self.montant_engage_eur} € (frais d'achat inclus)",
-                f"PERTE MAXIMALE : {self.perte_max_eur} € (frais inclus)",
+                f"Perte au stop : {self.perte_au_stop_eur} € (frais inclus, si le stop vend à son prix)",
+                f"PERTE MAXIMALE : {self.perte_max_eur} € (toute la mise, si le cours s'effondre"
+                " sans que le stop puisse vendre à son prix)",
             ]
-            if self.perte_au_stop_eur != self.perte_max_eur:
-                l.append(f"Perte si le stop s'exécute à son prix : {self.perte_au_stop_eur} €")
+            if self.perte_gap_30_eur is not None:
+                l.append(f"Exemple : ouverture à -30 % sous ton prix d'achat (gap) → perte ≈ {self.perte_gap_30_eur} €")
             l += [
                 f"Gain visé si tous les objectifs sont atteints (rien ne le garantit) : {self.gain_vise_eur} €",
                 f"Ratio gain/risque (au stop) : {self.ratio_gain_risque}",
@@ -126,7 +131,8 @@ def _entier_inf(x: Decimal) -> int:
 
 def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Optional[Plan] = None,
                       positions: Optional[list[Position]] = None,
-                      perimees: Optional[list[str]] = None) -> Fiche:
+                      perimees: Optional[list[str]] = None,
+                      resultat_realise_eur: Decimal = Decimal("0")) -> Fiche:
     plan = plan or _plan_par_defaut()
     positions = positions or []
     trade = plan.trade(trade_id)
@@ -152,7 +158,7 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
         interdits.append("Annonce majeure dans les 24 h : pas d'achat.")
     interdits += raisons_feu_vert(s.taux_us10a_pct, s.sp500_variation_seance_pct)
     if s.perte_cumulee_eur >= niv.seuil_arret_perte_cumulee_eur:
-        interdits.append(f"Perte cumulée {s.perte_cumulee_eur} € ≥ seuil d'arrêt du niveau"
+        interdits.append(f"Baisse depuis ton point haut {s.perte_cumulee_eur} € ≥ seuil d'arrêt du niveau"
                          f" ({niv.seuil_arret_perte_cumulee_eur} €) : achats arrêtés.")
     if trade.filtre_mm50 and s.cours_ref <= s.mm50_ref:
         interdits.append(f"Condition d'entrée non remplie : cours ({s.cours_ref}) pas au-dessus de la moyenne"
@@ -177,7 +183,18 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
     risque_unitaire = limite if turbo else limite - stop
     q_risque = _entier_inf((niv.risque_max_par_trade_eur - 2 * frais) / risque_unitaire)
     q_montant = _entier_inf((niv.montant_max_par_trade_eur - frais) / limite)
-    q = min(q_risque, q_montant)
+    # Liquidités : capital + résultat déjà encaissé − ce qui est encore investi.
+    investi = sum((p.valeur_eur for p in positions), Decimal("0"))
+    liquidites = plan.capital_eur + resultat_realise_eur - investi
+    q_cash = max(_entier_inf((liquidites - frais) / limite), 0)
+    q = min(q_risque, q_montant, q_cash)
+    if q_cash < 1:
+        fiche.verdict = Verdict.INTERDIT
+        fiche.raisons = [f"Liquidités insuffisantes : {_cent(liquidites)} € disponibles (capital {plan.capital_eur} €,"
+                         f" déjà investi {investi} €) pour 1 titre à {limite} € + frais."]
+        return fiche
+    if q_cash < min(q_risque, q_montant):
+        fiche.notes.append(f"Quantité réduite à {q} : liquidités disponibles {_cent(liquidites)} €.")
     if q < 1:
         fiche.verdict = Verdict.INTERDIT
         fiche.raisons = [f"Budget du niveau {niveau} trop petit pour 1 titre entier à {limite} €"
@@ -188,7 +205,9 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
     ventes = _plan_de_vente(q, objectifs)
     gain = sum(qv * (o - limite) for qv, o in ventes) - frais * (1 + len(ventes))
     perte_au_stop = q * (limite - stop) + 2 * frais
-    perte_max = q * risque_unitaire + 2 * frais
+    # Perte maximale réelle : toute la mise (un gap peut sauter le stop). Pour le turbo, la taille de
+    # position est déjà calculée sur la mise entière, donc perte maximale = budget du trade au plus.
+    perte_max = q * limite + 2 * frais
 
     fiche.quantite = q
     fiche.prix_limite_eur = limite
@@ -196,6 +215,8 @@ def build_order_sheet(trade_id: str, prix_saisis: Saisie, niveau: int, plan: Opt
     fiche.objectifs_eur = objectifs
     fiche.perte_au_stop_eur = perte_au_stop
     fiche.perte_max_eur = perte_max
+    if not turbo:
+        fiche.perte_gap_30_eur = _cent(q * limite * Decimal("0.30") + 2 * frais)
     fiche.gain_vise_eur = gain
     fiche.ratio_gain_risque = _cent(gain / perte_au_stop)
     fiche.montant_engage_eur = q * limite + frais
@@ -277,7 +298,8 @@ def _etapes(trade: Trade, plan: Plan, q: int, limite: Decimal, stop: Decimal, s:
 def _si_mal(trade: Trade, q: int, stop: Decimal, perte_au_stop: Decimal, perte_max: Decimal, s: Saisie) -> list[str]:
     l = [f"Si le prix tombe à {stop} €, le stop vend tes {q} titres : perte ≈ {perte_au_stop} € frais inclus.",
          "Ne descends JAMAIS le stop pour « laisser une chance ».",
-         "Une ouverture en forte baisse (gap) peut faire vendre sous le stop : la perte serait alors plus grande."]
+         "Une ouverture en forte baisse (gap) peut faire vendre sous le stop : la perte serait alors plus grande,"
+         f" jusqu'à {perte_max} € si le cours s'effondre."]
     if trade.type == "turbo_long":
         l.append(f"Si le Nasdaq-100 touche {s.barriere_ref} points, le turbo est désactivé et ne vaut presque"
                  f" plus rien : tu perds {perte_max} € (perte maximale).")

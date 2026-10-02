@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from poste.bilan import bilan_hebdo
+from poste.bilan import bilan_hebdo, ecarts_avec_fiche
 from poste.donnees.fabrique import charger_env, creer_marche
 from poste.donnees.modeles import FIN_ANSI, ROUGE_ANSI, badge
 from poste.exposition import Position as PositionExpo, calculer_exposition, charger_positions
@@ -88,7 +88,8 @@ def _entete(plan, niveau, journal):
     n = plan.niveau(niveau)
     print(RAPPEL)
     print(f"Niveau {niveau} ({n.nom}). Pour changer : python -m poste niveau 1, 2 ou 3")
-    print(f"Perte cumulée (journal) : {journal.perte_cumulee()} € / seuil {n.seuil_arret_perte_cumulee_eur} €")
+    print(f"Baisse depuis ton point haut (journal) : {journal.perte_cumulee()} €"
+          f" / seuil d'arrêt {n.seuil_arret_perte_cumulee_eur} €")
     print(calculer_exposition(_positions(plan, journal), plan.capital_eur).texte())
 
 
@@ -119,7 +120,8 @@ def _evenement_24h() -> bool:
 
 def _emettre(journal: Journal, trade_id: str, saisie: Saisie, niveau: int, plan, **kw) -> None:
     try:
-        fiche = build_order_sheet(trade_id, saisie, niveau, plan=plan, positions=_positions(plan, journal), **kw)
+        fiche = build_order_sheet(trade_id, saisie, niveau, plan=plan, positions=_positions(plan, journal),
+                                  resultat_realise_eur=journal.resultat_realise(), **kw)
     except (ValidationError, ValueError) as e:
         print(f"\nSaisie refusée, aucune fiche émise : {e}")
         return
@@ -254,6 +256,12 @@ def cmd_journal(argv: list[str]) -> None:
                 raison=input("Raison du trade, en une phrase : ").strip(),
                 fiche_id=fiche_id))
             print(f"Position {p.id} notée.")
+            if fiche_id:
+                fiche = next(f for f in journal.fiches if f.id == fiche_id)
+                if fiche.verdict != "FEU VERT":
+                    print(f"ATTENTION : la fiche {fiche_id} disait {fiche.verdict}, pas FEU VERT.")
+                for ecart in ecarts_avec_fiche(p.achat, fiche):
+                    print(f"ATTENTION : {ecart}. Ce sera compté dans le bilan.")
         elif action == "stop":
             pid = input("Position (ex. A1) : ").strip().upper()
             p = journal.deplacer_stop(pid, _maintenant(), _nombre("Nouveau prix du stop (en €)"))
@@ -298,12 +306,12 @@ def cmd_rappels() -> None:
     rappels = charger_reglages().rappels
     print("Rappels actifs (Ctrl+C pour arrêter). Prochains :")
     for quand, r in prochains_rappels(_maintenant(), rappels):
-        print(f"  {quand:%a %d/%m %H:%M} : {r.message}")
+        print(f"  {quand:%a %d/%m %H:%M} : {r.texte(quand.date())}")
     while True:
         quand, r = prochains_rappels(_maintenant(), rappels, nombre=1)[0]
         while (reste := (quand - _maintenant()).total_seconds()) > 0:
             _time.sleep(min(reste, 60))
-        message = r.message
+        message = r.texte(quand.date())
         if "bilan" in message.lower():
             plan = charger_plan()
             message = bilan_hebdo(_journal(plan), plan, _maintenant()).texte()

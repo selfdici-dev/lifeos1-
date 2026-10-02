@@ -9,6 +9,7 @@ import io
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -30,13 +31,32 @@ class Reponse:
     texte: str
 
 
-Transport = Callable[[str, dict], Reponse]
+Transport = Callable[..., Reponse]  # (url, params, headers=None) -> Reponse
 
 
-def transport_requests(url: str, params: dict) -> Reponse:
+def transport_requests(url: str, params: dict, headers: Optional[dict] = None) -> Reponse:
     import requests
-    r = requests.get(url, params=params, timeout=10)
+    r = requests.get(url, params=params, headers=headers, timeout=10)
     return Reponse(r.status_code, r.text)
+
+
+# Deuxième barrière : si quelqu'un active les logs détaillés (DEBUG), urllib3 écrit l'URL complète.
+# FRED et Alpha Vantage n'acceptent la clé que dans l'URL : on la masque dans tout message de log.
+_MOTIF_CLE = re.compile(r"((?:api_?key|token)=)[^&\s\"']+", re.IGNORECASE)
+
+
+class _MasqueCles(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        masque = _MOTIF_CLE.sub(r"\1***", message)
+        if masque != message:
+            record.msg, record.args = masque, None
+        return True
+
+
+for _nom in ("urllib3.connectionpool", "urllib3.poolmanager", "urllib3.util.retry", "urllib3.response",
+             "requests", "poste.donnees"):
+    logging.getLogger(_nom).addFilter(_MasqueCles())
 
 
 def _dec(x) -> Optional[Decimal]:
@@ -57,6 +77,7 @@ class Fournisseur:
     nom = ""
     variable_env = ""
     param_cle = ""
+    entete_cle: Optional[tuple[str, str]] = None  # (nom d'en-tête, gabarit) : la clé hors de l'URL
     par_minute: Optional[int] = None
     par_jour: Optional[int] = None
 
@@ -103,7 +124,11 @@ class Fournisseur:
             log.warning("%s : limite de requêtes atteinte", self.nom)
             return None
         try:
-            rep = self.transport(url, {**params, self.param_cle: self.__cle})
+            if self.entete_cle:
+                nom, gabarit = self.entete_cle
+                rep = self.transport(url, dict(params), headers={nom: gabarit.format(self.__cle)})
+            else:
+                rep = self.transport(url, {**params, self.param_cle: self.__cle}, headers=None)
         except Exception as e:  # noqa: BLE001 - on ne journalise que le type
             self.dernier_statut = f"erreur réseau ({type(e).__name__})"
             log.warning("%s : erreur réseau (%s)", self.nom, type(e).__name__)
@@ -135,6 +160,7 @@ class Finnhub(Fournisseur):
     nom = "Finnhub"
     variable_env = "FINNHUB_API_KEY"
     param_cle = "token"
+    entete_cle = ("X-Finnhub-Token", "{}")
     par_minute = 60
     URL = "https://finnhub.io/api/v1/quote"
 
@@ -161,6 +187,7 @@ class TwelveData(Fournisseur):
     nom = "Twelve Data"
     variable_env = "TWELVEDATA_API_KEY"
     param_cle = "apikey"
+    entete_cle = ("Authorization", "apikey {}")
     par_minute = 8
     par_jour = 800
     BASE = "https://api.twelvedata.com"

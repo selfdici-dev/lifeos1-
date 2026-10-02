@@ -148,9 +148,24 @@ class Journal:
         self._sauver()
         return fiche
 
+    def resultat_realise(self) -> Decimal:
+        return sum((p.resultat_realise_eur for p in self.positions), Decimal("0"))
+
     def perte_cumulee(self) -> Decimal:
-        total = sum((p.resultat_realise_eur for p in self.positions), Decimal("0"))
-        return max(Decimal("0"), -total)
+        """Baisse depuis le point haut du résultat encaissé : les gains passés ne masquent pas les pertes."""
+        evenements = []
+        for p in self.positions:
+            pa = p.achat.prix_execution_eur
+            for k, v in enumerate(p.ventes):
+                montant = v.quantite * (v.prix_eur - pa) - self.frais
+                if k == 0:
+                    montant -= self.frais  # frais d'achat, comptés à la première vente
+                evenements.append((v.quand, montant))
+        cumul = sommet = Decimal("0")
+        for _, montant in sorted(evenements, key=lambda e: e[0]):
+            cumul += montant
+            sommet = max(sommet, cumul)
+        return sommet - cumul
 
     def nb_trades_fermes(self) -> int:
         return sum(1 for p in self.positions if p.fermee)

@@ -9,7 +9,30 @@ from poste.plan import Plan
 from poste.regles import FUSEAU
 
 AJUSTEMENT_MIN_TRADES = 30
-ERREURS = ("stop descendu", "achat hors fourchette", "achat un jour interdit", "achat sans fiche FEU VERT")
+ERREURS = ("stop descendu", "achat hors fourchette", "achat un jour interdit", "achat sans fiche FEU VERT",
+           "quantité au-dessus de la fiche", "stop plus bas que la fiche", "instrument différent de la fiche")
+
+
+def _ecarts(achat, fiche) -> list[tuple[str, str]]:
+    out = []
+    if achat.trade_id != fiche.trade_id:
+        out.append(("instrument différent de la fiche",
+                    f"instrument {achat.trade_id} alors que la fiche {fiche.id} portait sur {fiche.trade_id}"))
+    if fiche.prix_limite_eur is not None and achat.prix_execution_eur > fiche.prix_limite_eur:
+        out.append(("achat hors fourchette",
+                    f"payé {achat.prix_execution_eur} € > prix limite {fiche.prix_limite_eur} €"))
+    if fiche.quantite is not None and achat.quantite > fiche.quantite:
+        out.append(("quantité au-dessus de la fiche",
+                    f"{achat.quantite} titres alors que la fiche en prévoyait {fiche.quantite} : risque dépassé"))
+    if fiche.prix_stop_eur is not None and achat.stop_eur < fiche.prix_stop_eur:
+        out.append(("stop plus bas que la fiche",
+                    f"stop à {achat.stop_eur} € alors que la fiche disait {fiche.prix_stop_eur} €"))
+    return out
+
+
+def ecarts_avec_fiche(achat, fiche) -> list[str]:
+    """Différences entre ce que tu as fait et ce que disait la fiche (vide = conforme)."""
+    return [msg for _, msg in _ecarts(achat, fiche)]
 
 
 def periode_bilan(fin: datetime) -> tuple[datetime, datetime]:
@@ -64,9 +87,10 @@ def bilan_hebdo(journal: Journal, plan: Plan, fin: datetime) -> Bilan:
         if fiche is None or fiche.verdict != "FEU VERT":
             erreurs["achat sans fiche FEU VERT"] += 1
             details.append(f"{p.id} {a.trade_id} : acheté sans fiche FEU VERT")
-        elif fiche.prix_limite_eur is not None and a.prix_execution_eur > fiche.prix_limite_eur:
-            erreurs["achat hors fourchette"] += 1
-            details.append(f"{p.id} {a.trade_id} : payé {a.prix_execution_eur} € > limite {fiche.prix_limite_eur} €")
+        else:
+            for categorie, msg in _ecarts(a, fiche):
+                erreurs[categorie] += 1
+                details.append(f"{p.id} {a.trade_id} : {msg}")
         # dernière fiche du même instrument dans les 24 h avant l'achat
         avant = [f for f in journal.fiches
                  if f.trade_id == a.trade_id and a.quand - timedelta(hours=24) <= f.quand <= a.quand]

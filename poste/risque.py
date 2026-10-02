@@ -21,7 +21,8 @@ class TableauRisque:
         l = ["=== TABLEAU DE RISQUE ===",
              f"Montant investi (prix d'achat) : {self.montant_investi_eur} €",
              f"Perte si tous les stops sautent : {self.perte_si_stops_eur} € (frais compris, hors gap)",
-             f"Perte cumulée réalisée : {self.perte_cumulee_eur} € / seuil d'arrêt {self.seuil_arret_eur} €",
+             f"Baisse depuis ton point haut (encaissé) : {self.perte_cumulee_eur} € / seuil d'arrêt"
+             f" {self.seuil_arret_eur} €",
              f"Distance au seuil d'arrêt : {self.distance_seuil_eur} €"
              f" ({self.distance_seuil_pire_cas_eur} € si tous les stops sautent)"]
         if self.distance_seuil_eur <= 0:

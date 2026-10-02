@@ -40,7 +40,7 @@ class FauxReseau:
         self.reponses = reponses  # hôte -> Reponse ou liste de Reponse ou exception
         self.appels = []
 
-    def __call__(self, url, params):
+    def __call__(self, url, params, headers=None):
         self.appels.append((url, dict(params)))
         for hote, rep in self.reponses.items():
             if hote in url:
