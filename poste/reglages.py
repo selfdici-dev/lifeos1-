@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from poste.execution.modeles import Mode
 
 from poste.rappels import RAPPELS_DEFAUT, Rappel
 
@@ -11,7 +13,11 @@ CHEMIN_REGLAGES = Path(__file__).resolve().parent.parent / "reglages.json"
 
 
 class Reglages(BaseModel):
+    # clé inconnue refusée : les limites d'exécution ne se règlent pas ici
+    model_config = ConfigDict(extra="forbid")
+
     niveau: Literal[1, 2, 3] = 1
+    mode_execution: Mode = Mode.MANUEL
     rappels: list[Rappel] = RAPPELS_DEFAUT
 
     @field_validator("rappels", mode="before")

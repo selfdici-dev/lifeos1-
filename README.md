@@ -108,4 +108,4 @@ ET ton accord.
 - [x] Phase 3 (moteur ; rapport à lancer sur ton ordinateur) : backtest honnête
 - [x] Phase 4 : journal, risque, bilan
 - [x] Phase 5 : revue critique (voir REVUE_PHASE5.md, corrections en attente)
-- [ ] Phase 6 : exécution automatisée (désactivée par défaut)
+- [x] Phase 6 : exécution automatisée chez IBKR, désactivée par défaut (voir EXECUTION_IBKR.md)

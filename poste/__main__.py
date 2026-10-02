@@ -11,6 +11,10 @@
   python -m poste risque          tableau de risque
   python -m poste bilan           bilan de la semaine
   python -m poste rappels         envoie les rappels ntfy (laisser tourner)
+  python -m poste execution       état de l'exécution automatisée (mode, arrêt, simulation)
+  python -m poste execution mode MANUEL|CONFIRMATION|AUTO
+  python -m poste arret           INTERRUPTEUR D'ARRÊT : coupe tout envoi, annule les achats en attente
+  python -m poste reprise         lève l'arrêt (à la main seulement)
 """
 import os
 import sys
@@ -32,10 +36,18 @@ from poste.rappels import envoyer_ntfy, prochains_rappels
 from poste.reglages import Reglages, charger_reglages, enregistrer_reglages
 from poste.regles import FUSEAU, charger_calendrier, evenements_bloquants
 from poste.risque import tableau_risque
+from poste.execution.arret import Interrupteur
+from poste.execution.executeur import Executeur
+from poste.execution.limites import LISTE_BLANCHE
+from poste.execution.modeles import Mode, OrdrePropose
+from poste.execution.simulation import PHRASE_AUTORISATION, RegistreSimulation, porte_ordres_reels
 
 RACINE = Path(__file__).resolve().parent.parent
 CHEMIN_POSITIONS = RACINE / "positions.json"
 CHEMIN_CALENDRIER = RACINE / "calendrier.json"
+CHEMIN_ARRET = RACINE / ".cache" / "ARRET"
+CHEMIN_SIMULATION = RACINE / ".cache" / "simulation.json"
+CHEMIN_AUTORISATION = RACINE / "AUTORISATION_ORDRES_REELS.txt"
 
 
 def _maintenant() -> datetime:
@@ -93,6 +105,12 @@ def _entete(plan, niveau, journal):
     print(calculer_exposition(_positions(plan, journal), plan.capital_eur).texte())
 
 
+def _question_prix() -> str:
+    if charger_reglages().mode_execution is Mode.MANUEL:
+        return "Prix VENDEUR affiché dans Trade Republic (en €)"
+    return "Prix VENDEUR affiché chez le courtier qui exécutera l'ordre (TWS / IBKR, en €)"
+
+
 def _choisir_trade(plan):
     print("\nTrades du plan :")
     for i, t in enumerate(plan.trades, 1):
@@ -132,8 +150,88 @@ def _emettre(journal: Journal, trade_id: str, saisie: Saisie, niveau: int, plan,
         quantite=fiche.quantite if fiche.verdict is Verdict.FEU_VERT else None))
     print()
     print(fiche.texte())
-    if fiche.verdict is Verdict.FEU_VERT:
+    if fiche.verdict is not Verdict.FEU_VERT:
+        return
+    mode = charger_reglages().mode_execution
+    if mode is Mode.MANUEL or trade_id not in LISTE_BLANCHE:
         print(f"\nFiche {trace.id}. Après l'achat : python -m poste journal achat (cite la fiche {trace.id}).")
+        return
+    trade = plan.trade(trade_id)
+    ordre = OrdrePropose(trade_id=trade_id, isin=trade.isin, quantite=fiche.quantite,
+                         prix_limite=fiche.prix_limite_eur, prix_stop=fiche.prix_stop_eur, devise="EUR",
+                         fiche_id=trace.id, verdict=fiche.verdict.value, perimees=tuple(kw.get("perimees") or ()))
+    print(f"\nMode {mode.value} : préparation de l'ordre chez le courtier.")
+    print(_executeur(plan, niveau, journal, mode).envoyer(ordre).texte())
+
+
+def _confirmer(o: OrdrePropose) -> bool:
+    print(f"\nORDRE À ENVOYER : ACHAT {o.quantite} × {o.trade_id} à cours limité {o.prix_limite} €,"
+          f" stop de vente lié à {o.prix_stop} € (reste chez le courtier). Montant max {o.montant} €.")
+    return input("Tape OUI (en majuscules) pour envoyer cet ordre, autre chose pour annuler : ").strip() == "OUI"
+
+
+def _executeur(plan, niveau, journal, mode) -> Executeur:
+    from poste.execution.ibkr import CourtierIBKR
+    charger_env()
+    courtier = CourtierIBKR(port=int(os.environ.get("IBKR_PORT", "7497")))
+    return Executeur(courtier=courtier, journal=journal, plan=plan, niveau=niveau, mode=mode,
+                     registre=RegistreSimulation(CHEMIN_SIMULATION), interrupteur=Interrupteur(CHEMIN_ARRET),
+                     horloge=_maintenant, confirmer=_confirmer, chemin_autorisation=CHEMIN_AUTORISATION,
+                     attente=_time.sleep)
+
+
+def cmd_execution(argv: list[str]) -> None:
+    reglages = charger_reglages()
+    if argv[:1] == ["mode"] and len(argv) == 2:
+        try:
+            mode = Mode(argv[1].upper())
+        except ValueError:
+            print("Modes : MANUEL, CONFIRMATION, AUTO.")
+            return
+        if mode is Mode.AUTO and input("Mode AUTO : l'app enverra seule les ordres FEU VERT, dans les limites"
+                                       " codées en dur. Tape AUTO pour confirmer : ").strip() != "AUTO":
+            print("Inchangé.")
+            return
+        enregistrer_reglages(reglages.model_copy(update={"mode_execution": mode}))
+        print(f"Mode d'exécution : {mode.value}.")
+        return
+    arret = Interrupteur(CHEMIN_ARRET)
+    registre = RegistreSimulation(CHEMIN_SIMULATION)
+    ok, manque = porte_ordres_reels(registre, _maintenant(), CHEMIN_AUTORISATION)
+    print(f"Mode : {reglages.mode_execution.value}")
+    print(f"Arrêt : {'ACTIF : ' + arret.raison if arret.actif else 'non'}")
+    print(f"Ordres enregistrés : {len(registre.entrees)} (anomalies : {len(registre.anomalies())})")
+    print("Ordres réels : " + ("autorisés" if ok else "INTERDITS"))
+    for m in manque:
+        print(f"  - {m}")
+
+
+def cmd_arret() -> None:
+    plan = charger_plan()
+    try:
+        ex = _executeur(plan, charger_reglages().niveau, _journal(plan), Mode.MANUEL)
+        annules = ex.arreter("bouton d'arrêt")
+    except Exception:  # noqa: BLE001 - le blocage local passe avant tout
+        Interrupteur(CHEMIN_ARRET).declencher("bouton d'arrêt", _maintenant())
+        annules = None
+    if annules is None:
+        print("ARRÊT ACTIF : plus aucun envoi. MAIS le courtier n'a pas pu être joint : annule toi-même les"
+              " achats en attente dans TWS ou l'appli IBKR (garde les stops).")
+    else:
+        print(f"ARRÊT ACTIF. Achats en attente annulés : {len(annules)}. Les stops de protection restent en place.")
+
+
+def cmd_reprise() -> None:
+    arret = Interrupteur(CHEMIN_ARRET)
+    if not arret.actif:
+        print("Aucun arrêt actif.")
+        return
+    print(f"Arrêt actif :\n{arret.raison}")
+    if input("Tu as compris la cause et vérifié tes ordres chez le courtier ? Tape REPRISE : ").strip() == "REPRISE":
+        arret.lever()
+        print("Arrêt levé.")
+    else:
+        print("Arrêt maintenu.")
 
 
 def cmd_niveau(arg: str) -> None:
@@ -164,7 +262,7 @@ def cmd_fiche() -> None:
 
     print(f"\nRéférence : {trade.ref_libelle}")
     valeurs = dict(
-        prix_vendeur_eur=_nombre("Prix VENDEUR affiché dans Trade Republic (en €)"),
+        prix_vendeur_eur=_nombre(_question_prix()),
         cours_ref=_nombre("Cours actuel sur TradingView"),
         mm50_ref=_nombre("Moyenne mobile 50 jours sur TradingView"),
         eurusd=_nombre("EUR/USD (1 € = x $), vide si inutile", optionnel=trade.devise_ref != "USD"),
@@ -219,7 +317,7 @@ def cmd_auto() -> None:
 
     d = releve.donnees
     valeurs = dict(
-        prix_vendeur_eur=_nombre("Prix VENDEUR affiché dans Trade Republic (en €)"),
+        prix_vendeur_eur=_nombre(_question_prix()),
         cours_ref=d["cours"].valeur,
         mm50_ref=d["mm50"].valeur,
         eurusd=d["eurusd"].valeur if "eurusd" in d else None,
@@ -321,7 +419,13 @@ def cmd_rappels() -> None:
 def main(argv: list[str]) -> None:
     commandes = {"auto": cmd_auto, "expo": cmd_expo, "risque": cmd_risque, "bilan": cmd_bilan,
                  "rappels": cmd_rappels}
-    if argv[:1] == ["niveau"] and len(argv) == 2:
+    if argv[:1] == ["execution"]:
+        cmd_execution(argv[1:])
+    elif argv[:1] == ["arret"]:
+        cmd_arret()
+    elif argv[:1] == ["reprise"]:
+        cmd_reprise()
+    elif argv[:1] == ["niveau"] and len(argv) == 2:
         cmd_niveau(argv[1])
     elif argv[:1] == ["journal"]:
         cmd_journal(argv[1:])
