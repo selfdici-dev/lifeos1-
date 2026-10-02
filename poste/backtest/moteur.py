@@ -32,10 +32,13 @@ class Config:
     stop_pct: float = 10.0
     atr_mult: float = 2.0
     objectifs: tuple[float, ...] = (12.0, 25.0)
+    # stop suiveur : il monte avec la clôture, à la même distance que le stop initial, et ne descend jamais
+    stop_suiveur: bool = False
 
     def libelle(self) -> str:
         stop = {"pct": f"stop −{self.stop_pct:g} %", "atr": f"stop {self.atr_mult:g}×ATR14",
                 "bas10": "stop sous le plus bas 10 séances"}[self.stop]
+        stop += " suiveur" if self.stop_suiveur else ""
         sortie = ("objectifs " + "/".join(f"+{o:g} %" for o in self.objectifs)) if self.sortie == "objectifs" \
             else "tenir sans objectif"
         return f"{'filtre MM50' if self.filtre_mm50 else 'sans filtre'}, {stop}, {sortie}"
@@ -171,6 +174,10 @@ def simuler(barres: list[Barre], cfg: Config, couts: Couts, montant: float = 625
             if qte <= 1e-12:
                 trades.append(pos)
                 pos = None
+
+        if pos is not None and cfg.stop_suiveur:
+            # mis à jour avec la clôture de la séance : il ne sert qu'à partir de la séance suivante
+            stop = max(stop, b.c - (pos.prix_entree - pos.stop_initial))
 
         latent = qte * (b.c * (1 - demi) - pos.prix_entree) if pos else 0.0
         equity.append((b.jour, capital + realise + latent))

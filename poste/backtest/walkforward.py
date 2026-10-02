@@ -1,5 +1,6 @@
 """Walk-forward : on choisit la meilleure règle sur des années d'apprentissage, puis on la juge
 sur l'année suivante, jamais vue. Les deux périodes ne se mélangent jamais."""
+from collections import Counter
 from dataclasses import dataclass
 from typing import Optional
 
@@ -30,11 +31,17 @@ class Etape:
     pnl_test_choisie: float
     pnl_test_plan: float
     trades_test_choisie: int
+    variation_test_pct: float = 0.0  # ce qu'a fait l'instrument pendant l'année de test (en %)
 
 
 @dataclass
 class WalkForward:
     etapes: list[Etape]
+
+    def regle_la_plus_frequente(self) -> tuple[Optional[Config], int]:
+        if not self.etapes:
+            return None, 0
+        return Counter(e.choisie for e in self.etapes).most_common(1)[0]
 
     @property
     def pnl_choisie(self) -> float:
@@ -70,5 +77,7 @@ def walk_forward(barres: list[Barre], configs: list[Config], plan: Config, couts
         choisie = max(configs, key=score)
         r_c, m_c = _pnl(barres, choisie, couts, montant, *tst)
         _, m_p = _pnl(barres, plan, couts, montant, *tst)
-        etapes.append(Etape((a0, a1), (t0, t1), choisie, m_c.rendement_eur, m_p.rendement_eur, m_c.nb_trades))
+        variation = (barres[tst[1]].c / barres[tst[0]].o - 1) * 100
+        etapes.append(Etape((a0, a1), (t0, t1), choisie, m_c.rendement_eur, m_p.rendement_eur, m_c.nb_trades,
+                            variation))
     return WalkForward(etapes)
