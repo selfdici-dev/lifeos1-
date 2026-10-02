@@ -1,5 +1,7 @@
 # Poste de trading personnel
 
+**Pour l'utiliser sans rien connaître : lis [MODE_D_EMPLOI.md](MODE_D_EMPLOI.md). Sous Windows : `INSTALLER.bat` une fois, puis `LANCER.bat` à chaque fois.**
+
 Aide à la décision, pas un conseil financier.
 
 L'application ne passe aucun ordre : tu saisis tout à la main dans Trade Republic.

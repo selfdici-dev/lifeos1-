@@ -6,6 +6,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
+from poste.console import couleur
 from poste.regles import FUSEAU
 
 ROUGE_ANSI, ORANGE_ANSI, VERT_ANSI, FIN_ANSI = "\x1b[31m", "\x1b[33m", "\x1b[32m", "\x1b[0m"
@@ -65,8 +66,8 @@ def fraicheur(d: Optional[Donnee], maintenant: datetime) -> Fraicheur:
 def badge(nom: str, d: Optional[Donnee], maintenant: datetime) -> str:
     f = fraicheur(d, maintenant)
     if d is None:
-        return f"{ROUGE_ANSI}PÉRIMÉ{FIN_ANSI} {nom} : aucune source disponible"
+        return couleur(f"{ROUGE_ANSI}PÉRIMÉ{FIN_ANSI} {nom} : aucune source disponible")
     heure = d.horodatage.astimezone(FUSEAU).strftime("%d/%m %H:%M")
-    couleur = {Fraicheur.VERT: VERT_ANSI, Fraicheur.ORANGE: ORANGE_ANSI, Fraicheur.ROUGE: ROUGE_ANSI}[f]
+    teinte = {Fraicheur.VERT: VERT_ANSI, Fraicheur.ORANGE: ORANGE_ANSI, Fraicheur.ROUGE: ROUGE_ANSI}[f]
     etat = "PÉRIMÉ" if f is Fraicheur.ROUGE else f.value
-    return f"{couleur}{etat}{FIN_ANSI} {nom} = {d.valeur} · {d.source} · {heure} (Paris)"
+    return couleur(f"{teinte}{etat}{FIN_ANSI} {nom} = {d.valeur} · {d.source} · {heure} (Paris)")

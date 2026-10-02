@@ -1,6 +1,7 @@
 """Assistant interactif.
 
-  python -m poste                 fiche d'ordre, prix saisis à la main
+  python -m poste                 MENU SIMPLE (recommandé ; sous Windows : double-clic sur LANCER.bat)
+  python -m poste fiche           fiche d'ordre, prix saisis à la main
   python -m poste auto            fiche avec données en direct (diagnostic : python -m poste.diagnostic)
   python -m poste niveau 2        change le niveau d'agressivité
   python -m poste expo            exposition par thème
@@ -27,6 +28,7 @@ from pydantic import ValidationError
 
 from poste.bilan import bilan_hebdo, ecarts_avec_fiche
 from poste.donnees.fabrique import charger_env, creer_marche
+from poste.console import couleur, preparer_console
 from poste.donnees.modeles import FIN_ANSI, ROUGE_ANSI, badge
 from poste.exposition import Position as PositionExpo, calculer_exposition, charger_positions
 from poste.fiche import RAPPEL, Saisie, Verdict, build_order_sheet
@@ -297,7 +299,7 @@ def cmd_auto() -> None:
         print("  " + badge(nom, d, maintenant))
     perimees = releve.perimees(maintenant)
     if perimees:
-        print(f"\n{ROUGE_ANSI}PÉRIMÉ{FIN_ANSI} : {', '.join(perimees)}. Aucune fiche d'ordre générée.")
+        print(couleur(f"\n{ROUGE_ANSI}PÉRIMÉ{FIN_ANSI} : {', '.join(perimees)}. Aucune fiche d'ordre générée."))
         print("Hors séance US, c'est normal. Sinon : python -m poste.diagnostic")
         return
 
@@ -417,8 +419,9 @@ def cmd_rappels() -> None:
 
 
 def main(argv: list[str]) -> None:
+    preparer_console()
     commandes = {"auto": cmd_auto, "expo": cmd_expo, "risque": cmd_risque, "bilan": cmd_bilan,
-                 "rappels": cmd_rappels}
+                 "rappels": cmd_rappels, "fiche": cmd_fiche}
     if argv[:1] == ["execution"]:
         cmd_execution(argv[1:])
     elif argv[:1] == ["arret"]:
@@ -432,7 +435,8 @@ def main(argv: list[str]) -> None:
     elif len(argv) == 1 and argv[0] in commandes:
         commandes[argv[0]]()
     elif not argv:
-        cmd_fiche()
+        from poste.menu import menu
+        menu()
     else:
         print(__doc__)
 
