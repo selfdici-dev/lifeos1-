@@ -10,7 +10,8 @@
 | M1 clé dans les logs | corriger | **corrigé** : clé en en-tête HTTP pour Finnhub et Twelve Data ; masquage des clés dans tous les logs urllib3 (test en DEBUG réel) |
 | M2 rappel d'ouverture | corriger | **corrigé** : rappel calé sur 9:30 New York, converti en heure de Paris chaque jour |
 | M5 achat ≠ fiche | corriger | **corrigé** : quantité, stop, instrument et prix comparés à la fiche, alerte immédiate et bilan |
-| C1, H3, H4, M3, M4, M6, F1-F6 | — | ouverts |
+| H3 biais du survivant | annoter | **annoté** : avertissement en tête du rapport de backtest ; verdict walk-forward plus sévère (écart net, régularité, stabilité, protection en année de baisse) ; stop suiveur ajouté pour une comparaison honnête |
+| C1, H4, M3, M4, M6, F1-F6 | — | ouverts |
 
 Points encore ouverts : la perte possible des positions ouvertes (stops) ne bloque toujours pas un nouvel
 achat (seconde moitié de H2) ; C1 reste à confirmer sur une vraie réponse de Twelve Data.

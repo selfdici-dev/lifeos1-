@@ -117,8 +117,9 @@ def test_aucune_fuite_du_futur():
     b = serie(closes, ecart=0.5)
     T = 250
     futur_modifie = b[:T] + [Barre(z.jour, z.o * 3, z.h * 3, z.l * 3, z.c * 3) for z in b[T:]]
-    for cfg in [Config(filtre_mm50=f, stop=s, sortie=so)
-                for f in (True, False) for s in ("pct", "atr", "bas10") for so in ("tenir", "objectifs")]:
+    for cfg in [Config(filtre_mm50=f, stop=s, sortie=so, stop_suiveur=sv)
+                for f in (True, False) for s in ("pct", "atr", "bas10") for so in ("tenir", "objectifs")
+                for sv in (False, True)]:
         a = simuler(b, cfg, SANS_COUTS, montant=100, premier_jour=50)
         m = simuler(futur_modifie, cfg, SANS_COUTS, montant=100, premier_jour=50)
         avant = lambda r: [(t.entree_jour, t.prix_entree, t.stop_initial) for t in r.trades if t.entree_jour < b[T].jour]

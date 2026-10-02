@@ -65,10 +65,14 @@ Les prix sont indicatifs : le prix d'exécution se lit dans Trade Republic.
 
 Instruments : Nvidia, SOXX (approximation de l'ETF semi-conducteurs UCITS), Bitcoin (approximation de l'ETP),
 Nasdaq-100. Le rapport compare : (a) filtre MM50 ou non ; (b) stop −X %, 2×ATR 14, plus bas 10 séances ;
-(c) objectifs ou tenir ; (d) turbo Nasdaq-100 à barrière 25 % et 33 %, objectifs +30 % et +60 % sur des
+(c) objectifs, ou tenir sans objectif (avec stop fixe, test peu réaliste, ou stop suiveur) ; (d) turbo Nasdaq-100 à barrière 25 % et 33 %, objectifs +30 % et +60 % sur des
 fenêtres de 6 semaines. Coûts : 1 € par ordre, écart achat-vente, financement du turbo.
 Walk-forward (3 ans d'apprentissage, 1 an de test jamais vu), régimes 2018, 2020, 2022, juillet 2026.
-Moins de 30 trades : « échantillon insuffisant ». Aucun seuil ne change sans amélioration hors échantillon
+Moins de 30 trades : « échantillon insuffisant ».
+Le verdict du walk-forward (`poste/backtest/verdict.py`) ne retient une règle alternative que si l'écart est net
+(au moins 25 % du résultat du plan et 100 €), régulier (au moins 2 années sur 3), stable d'une année à l'autre et pas
+moins protecteur que le plan lors des années de baisse, sur au moins 30 trades. Le rapport commence par un rappel du
+biais du survivant (instruments choisis après avoir énormément monté). Aucun seuil ne change sans amélioration hors échantillon
 ET ton accord.
 
 ## Journal, risque, bilan (phase 4)

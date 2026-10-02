@@ -9,6 +9,7 @@ from poste.backtest.donnees import charger_csv
 from poste.backtest.mesures import ECHANTILLON_MIN, mesurer
 from poste.backtest.moteur import Barre, Config, Couts, simuler
 from poste.backtest.turbo import fenetres_turbo
+from poste.backtest.verdict import evaluer_walk_forward
 from poste.backtest.walkforward import walk_forward
 
 MONTANT = 625.0     # montant par trade du niveau 1
@@ -33,7 +34,10 @@ INSTRUMENTS = [
     Instrument("ETF semi-conducteurs", "SOXX", "SOXX", 10, (12, 25), 0.2,
                note="SOXX (version américaine) sert d'approximation : les ETF UCITS ont un historique plus court."),
     Instrument("Bitcoin", "BTC-USD", "BTC-USD", 15, (20, 40), 0.5,
-               note="Le cours du bitcoin sert d'approximation de l'ETP ; les frais annuels de l'ETP ne sont pas comptés."),
+               note="Le cours du bitcoin sert d'approximation de l'ETP ; les frais annuels de l'ETP ne sont pas comptés."
+                    " Le Bitcoin se négocie 7 jours sur 7 : les « 50 séances » de la moyenne mobile et les"
+                    " « 14 séances » de l'ATR sont des jours calendaires, et l'ETP réel ne se négocie pas le week-end"
+                    " (les écarts d'ouverture du lundi sont sous-estimés)."),
     Instrument("Nasdaq-100", "^NDX", "NDX", 10, (12, 25), 0.1, turbo=True),
 ]
 
@@ -52,8 +56,9 @@ def _cfg_plan(inst: Instrument, **kw) -> Config:
 
 
 def _grille(inst: Instrument) -> list[Config]:
-    return [_cfg_plan(inst, filtre_mm50=f, stop=s, sortie=so)
-            for f in (True, False) for s in ("pct", "atr", "bas10") for so in ("objectifs", "tenir")]
+    return [_cfg_plan(inst, filtre_mm50=f, stop=s, sortie=so, stop_suiveur=suiveur)
+            for f in (True, False) for s in ("pct", "atr", "bas10")
+            for so, suiveur in (("objectifs", False), ("tenir", True))]
 
 
 def _indices(barres: list[Barre], d0: date, d1: date) -> Optional[tuple[int, int]]:
@@ -90,10 +95,14 @@ def _section_instrument(inst: Instrument, barres: list[Barre]) -> tuple[list[str
     objs = "/".join(f"+{o:g} %" for o in inst.objectifs)
     bloc("c) Objectifs (filtre MM50, stop du plan)",
          [(f"objectifs {objs} puis stop remonté au prix d'achat", plan),
-          ("tenir sans objectif (sortie au stop seulement)", _cfg_plan(inst, sortie="tenir"))])
+          ("tenir sans objectif, stop fixe (test peu réaliste : le stop ne monte jamais, la position peut durer"
+           " des années)", _cfg_plan(inst, sortie="tenir")),
+          ("tenir sans objectif, stop suiveur (il monte avec le cours, à la même distance)",
+           _cfg_plan(inst, sortie="tenir", stop_suiveur=True))])
 
     wf = walk_forward(barres, _grille(inst), plan, couts, montant=MONTANT)
-    L.append("### Walk-forward (3 ans d'apprentissage, puis 1 an de test jamais vu)")
+    L.append("### Walk-forward (3 ans d'apprentissage, puis 1 an de test jamais vu ; règles testées : filtre ou non,"
+             " 3 types de stop, objectifs ou « tenir » avec stop suiveur)")
     if not wf.etapes:
         L += ["Historique trop court pour un walk-forward.", ""]
         verdict = f"{inst.nom} : historique trop court, on garde le plan tel quel (non testé)."
@@ -105,7 +114,9 @@ def _section_instrument(inst: Instrument, barres: list[Barre]) -> tuple[list[str
     trades_hors = sum(e.trades_test_choisie for e in wf.etapes)
     L += [f"- Total hors échantillon : règle choisie {wf.pnl_choisie:+.0f} €, plan {wf.pnl_plan:+.0f} €,"
           f" la règle choisie fait mieux {wf.annees_gagnees} année(s) sur {len(wf.etapes)}"
-          f" ({trades_hors} trades testés).", ""]
+          f" ({trades_hors} trades testés)."]
+    cfg_freq, n_freq = wf.regle_la_plus_frequente()
+    L += [f"- Règle choisie le plus souvent : « {cfg_freq.libelle()} » ({n_freq} année(s) sur {len(wf.etapes)}).", ""]
 
     L.append("### Régimes de marché")
     for nom, d0, d1 in REGIMES:
@@ -119,18 +130,19 @@ def _section_instrument(inst: Instrument, barres: list[Barre]) -> tuple[list[str
         L.append(f"- {nom} (l'instrument a fait {var:+.0f} %) : plan {m_p.ligne()} ; sans filtre {m_s.ligne()}")
     L.append("")
 
-    # Verdict : on ne change un seuil que si l'amélioration tient HORS échantillon, de façon régulière.
+    # Verdict : on ne change un seuil que si l'amélioration tient HORS échantillon (voir verdict.py).
     m_plan = _mesure(barres, plan, couts)
-    regulier = wf.annees_gagnees > len(wf.etapes) / 2
-    if trades_hors < ECHANTILLON_MIN:
+    ev = evaluer_walk_forward(wf)
+    if ev.retenue:
+        verdict = (f"{inst.nom} : une règle choisie sur le passé fait nettement mieux que le plan hors échantillon"
+                   f" ({wf.pnl_choisie:+.0f} € contre {wf.pnl_plan:+.0f} €), de façon régulière, stable et sans moins"
+                   " bien protéger les années de baisse. C'est une piste à examiner (attention au biais du"
+                   " survivant), pas une preuve : on n'en change qu'avec ton accord.")
+    elif trades_hors < ECHANTILLON_MIN:
         verdict = (f"{inst.nom} : échantillon insuffisant hors échantillon ({trades_hors} trades) :"
                    " on garde les seuils du plan, sans preuve qu'ils marchent.")
-    elif wf.pnl_choisie > wf.pnl_plan and regulier:
-        verdict = (f"{inst.nom} : choisir la règle sur le passé a fait mieux que le plan hors échantillon"
-                   f" ({wf.pnl_choisie:+.0f} € contre {wf.pnl_plan:+.0f} €, {wf.annees_gagnees}/{len(wf.etapes)} années)."
-                   " Regarde quelle règle revient le plus souvent ci-dessus ; on n'en change qu'avec ton accord.")
     else:
-        verdict = (f"{inst.nom} : aucune alternative ne fait mieux de façon régulière hors échantillon :"
+        verdict = (f"{inst.nom} : aucune alternative ne convainc hors échantillon ({' ; '.join(ev.raisons)}) :"
                    " on garde les seuils du plan.")
     if m_plan.rendement_eur < 0:
         verdict += f" Attention : le plan lui-même perd de l'argent sur la période ({m_plan.rendement_eur:+.0f} €)."
@@ -142,7 +154,10 @@ def _section_turbo(barres: list[Barre]) -> tuple[list[str], str]:
     L = ["### d) Turbo long Nasdaq-100 (fenêtres de 6 semaines = 30 séances)",
          "Hypothèses : barrière = niveau de financement, financement 5 %/an, écart 0,5 %, 2 € de frais sur"
          " ~70 € de mise (≈ 2,8 %), stop à −20 % sur le turbo, filtre MM50. Désactivation = mise perdue."
-         " Tout cela est à vérifier dans la fiche du produit.", ""]
+         " Tout cela est à vérifier dans la fiche du produit.",
+         "Attention : « désactivé : 0 % » ne veut pas dire sans risque. Le modèle suppose que ton stop à −20 %"
+         " s'exécute à temps, avant la barrière ; lors d'un gros gap ou si le stop n'est pas exécuté, la mise"
+         " entière peut être perdue.", ""]
     resultats = []
     for dist in (25, 33):
         r = fenetres_turbo(barres, distance_pct=dist, objectifs=(30, 60), duree=30, financement_annuel_pct=5,
@@ -177,7 +192,15 @@ def generer_rapport(dossier: Path = DOSSIER) -> str:
          f"Mise de {MONTANT:.0f} € par trade (niveau 1), capital {CAPITAL:.0f} €, 1 € par ordre, écart achat-vente"
          " compté. Décisions prises uniquement avec les séances passées ; achat à l'ouverture suivante ;"
          " un gap sous le stop vend à l'ouverture. En dessous de"
-         f" {ECHANTILLON_MIN} trades, un résultat est marqué « échantillon insuffisant ».", ""]
+         f" {ECHANTILLON_MIN} trades, un résultat est marqué « échantillon insuffisant ».", "",
+         "## À lire avant les chiffres", "",
+         "- **Biais du survivant** : Nvidia, le Bitcoin, le Nasdaq-100 et les semi-conducteurs ont été choisis en 2026,"
+         " après avoir énormément monté depuis 2015. Un test sur ces actifs flatte presque toute stratégie qui reste"
+         " investie, et les chiffres « acheter et garder » ne disent rien sur ce qui se passera ensuite.",
+         "- **Écarts de quelques pourcents entre deux variantes = bruit** : avec quelques dizaines de trades, seules"
+         " les grosses différences (et la pire baisse) comptent.",
+         "- **« Tenir sans objectif, stop fixe » est un test peu réaliste** : le stop ne monte jamais, donc quelques"
+         " positions durent des années. Le stop suiveur est la comparaison honnête.", ""]
     verdicts = []
     for inst in INSTRUMENTS:
         f = dossier / f"{inst.fichier}.csv"
